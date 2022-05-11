@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,15 @@ const (
 	ImgDir = "image"
 )
 
+type Item struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+
+type ItemData struct {
+	Items []Item `json:"items"`
+}
+
 type Response struct {
 	Message string `json:"message"`
 }
@@ -25,13 +35,30 @@ func root(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
-func addItem(c echo.Context) error {
-	// Get form data
-	name := c.FormValue("name") //多分 -d name=jacketとしたときには，新たにjacketという名前のフォーム（カテゴリ？）を作成している？
-	c.Logger().Infof("Receive item: %s", name)
+var itemData = ItemData{Items: make([]Item, 0, 0)}
 
-	message := fmt.Sprintf("item received: %s", name) //これは画面に表示しているだけ
-	res := Response{Message: message}                 //サーバーがレスポンスするメッセージを指定
+func addItem(c echo.Context) error {
+	//fileの作成
+	file, errf := os.Create("item.json") //fileはos.File型
+	if errf != nil {
+		fmt.Println(errf)
+	}
+
+	// Get form data
+	itemData.Items = append(itemData.Items, Item{Name: c.FormValue("name"), Category: c.FormValue("category")})
+
+	name := c.FormValue("name") //多分 -d name=jacketとしたときには，新たにjacketという名前のフォーム（カテゴリ？）を作成している？
+	category := c.FormValue("category")
+	c.Logger().Infof("Receive item: %s", name)
+	c.Logger().Infof("Receive item: %s", category)
+
+	message := fmt.Sprintf("item received: name=%s, category=%s", name, category) //これは画面に表示しているだけ
+	res := Response{Message: message}                                             //サーバーがレスポンスするメッセージを指定
+
+	err := json.NewEncoder(file).Encode(itemData)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	return c.JSON(http.StatusOK, res) // レスポンスをJSONに変換して表示？
 }
@@ -79,6 +106,6 @@ func main() {
 	e.POST("/items", addItem)
 	e.GET("/image/:itemImg", getImg)
 
-	// Start server
+	// Start server ：　Logger.Fatalは恐らくecho.Startがerrをreturnしたときに，errの内容を出力してexitする
 	e.Logger.Fatal(e.Start(":9000")) //Loggerはinterfaseだった。多分このinterfaceの実装はecho.goがimportしている"github.com/labstack/gommon/log"の中で実装されている。しかしこの中でもさらにglobalとかいう変数を使っててもうわけわかめ
 }
