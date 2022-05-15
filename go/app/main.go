@@ -37,30 +37,48 @@ func root(c echo.Context) error {
 
 var itemData = ItemData{Items: make([]Item, 0, 0)}
 
+func ErrLackItem(field string, c echo.Context) error {
+	c.Logger().Warn(`Failed to create "item.json": `, field, " is ", "empty.") //開発者用のエラーログの出力
+	message := fmt.Sprintf(`Failed to create item. Please fill %s.`, field)
+	res := Response{Message: message}         //ユーザー用にエラーをレスポンスする
+	return c.JSON(http.StatusBadRequest, res) //ユーザー用にエラーをレスポンスする
+}
+
 func addItem(c echo.Context) error {
 	//fileの作成
-	file, errf := os.Create("item.json") //fileはos.File型
-	if errf != nil {
-		fmt.Println(errf)
+	file, err := os.Create("item.json") //fileはos.File型
+	if err != nil {
+		c.Logger().Error(`Failed to create "item.json": %v`, err) //開発者用のエラーログの出力
+		res := Response{Message: `Failed to create item`}         //ユーザー用にエラーをレスポンスする
+		return c.JSON(http.StatusInternalServerError, res)        //ユーザー用にエラーをレスポンスする
 	}
+	defer file.Close()
 
 	// Get form data
-	itemData.Items = append(itemData.Items, Item{Name: c.FormValue("name"), Category: c.FormValue("category")})
-
 	name := c.FormValue("name") //多分 -d name=jacketとしたときには，新たにjacketという名前のフォーム（カテゴリ？）を作成している？
 	category := c.FormValue("category")
+	//nameとcategoryいずれかが不足してたらエラー
+	if name == "" {
+		return ErrLackItem("name", c)
+	} else if category == "" {
+		return ErrLackItem("category", c)
+	}
 	c.Logger().Infof("Receive item: %s", name)
 	c.Logger().Infof("Receive item: %s", category)
+	itemData.Items = append(itemData.Items, Item{Name: name, Category: category})
 
-	message := fmt.Sprintf("item received: name=%s, category=%s", name, category) //これは画面に表示しているだけ
-	res := Response{Message: message}                                             //サーバーがレスポンスするメッセージを指定
+	//サーバーがレスポンスするメッセージを指定
+	message := fmt.Sprintf("item received: name=%s, category=%s", name, category)
+	res := Response{Message: message}
 
-	err := json.NewEncoder(file).Encode(itemData)
+	err = json.NewEncoder(file).Encode(itemData) //Go→JSONに変換してfileに書き込む
 	if err != nil {
-		fmt.Println(err)
+		c.Logger().Error(`Failed to create "item.json": %v`, err) //開発者用のエラーログの出力
+		res := Response{Message: `Failed to create item`}
+		return c.JSON(http.StatusInternalServerError, res) //ユーザー用にエラーをレスポンスする
 	}
 
-	return c.JSON(http.StatusOK, res) // レスポンスをJSONに変換して表示？
+	return c.JSON(http.StatusOK, res) //ユーザーにレスポンスを返す。
 }
 
 func getImg(c echo.Context) error {
@@ -87,7 +105,7 @@ func main() {
 	e.Use(middleware.Logger())  //いわゆるアクセスログのようなリクエスト単位のログを出力
 	e.Use(middleware.Recover()) //アプリケーションのどこかで予期せずにpanicを起こしてしまっても、サーバは落とさずにエラーレスポンスを返せるようにリカバリーする
 	//ログの出力レベルを設定
-	e.Logger.SetLevel(log.INFO) //INFOはlog level 2らしいが，具体的にはわからない・・・
+	e.Logger.SetLevel(log.INFO) //e.LoggerはINFO以上のログじゃないと出力しない
 
 	front_url := os.Getenv("FRONT_URL") //"FROTN_URL"は空なのでifに入る
 	if front_url == "" {
@@ -102,10 +120,10 @@ func main() {
 
 	// Routes
 	// 各ルーティングに対するハンドラを設定
-	e.GET("/", root) //"/"がきたらrootをよぶ
-	e.POST("/items", addItem)
+	e.GET("/", root)          //"/"がきたらrootをよぶ
+	e.POST("/items", addItem) //addItemでエラーが起きた場合ってどこで拾えばいいの？
 	e.GET("/image/:itemImg", getImg)
 
 	// Start server ：　Logger.Fatalは恐らくecho.Startがerrをreturnしたときに，errの内容を出力してexitする
-	e.Logger.Fatal(e.Start(":9000")) //Loggerはinterfaseだった。多分このinterfaceの実装はecho.goがimportしている"github.com/labstack/gommon/log"の中で実装されている。しかしこの中でもさらにglobalとかいう変数を使っててもうわけわかめ
+	e.Logger.Fatal(e.Start(":9000"))
 }
