@@ -40,7 +40,7 @@ var itemData = ItemData{Items: make([]Item, 0, 0)}
 func ErrLackItem(field string, c echo.Context) error {
 	c.Logger().Warn(`Failed to create "item.json": `, field, " is ", "empty.") //開発者用のエラーログの出力
 	message := fmt.Sprintf(`Failed to create item. Please fill %s.`, field)
-	res := Response{Message: message}         //ユーザー用にエラーをレスポンスする
+	res := Response{Message: message}
 	return c.JSON(http.StatusBadRequest, res) //ユーザー用にエラーをレスポンスする
 }
 
@@ -49,8 +49,8 @@ func addItem(c echo.Context) error {
 	file, err := os.Create("item.json") //fileはos.File型
 	if err != nil {
 		c.Logger().Error(`Failed to create "item.json": %v`, err) //開発者用のエラーログの出力
-		res := Response{Message: `Failed to create item`}         //ユーザー用にエラーをレスポンスする
-		return c.JSON(http.StatusInternalServerError, res)        //ユーザー用にエラーをレスポンスする
+		res := Response{Message: `Failed to create item`}
+		return c.JSON(http.StatusInternalServerError, res) //ユーザー用にエラーをレスポンスする
 	}
 	defer file.Close()
 
@@ -127,7 +127,7 @@ func main() {
 	// 各ルーティングに対するハンドラを設定
 	e.GET("/", root)          //"/"がきたらrootをよぶ
 	e.POST("/items", addItem) //addItemでエラーが起きた場合ってどこで拾えばいいの？
-	e.GET("/items", getItem)  //addItemでエラーが起きた場合ってどこで拾えばいいの？
+	e.GET("/items", getItem)
 	e.GET("/image/:itemImg", getImg)
 
 	// Start server ：　Logger.Fatalは恐らくecho.Startがerrをreturnしたときに，errの内容を出力してexitする
