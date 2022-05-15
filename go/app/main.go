@@ -67,18 +67,23 @@ func addItem(c echo.Context) error {
 	c.Logger().Infof("Receive item: %s", category)
 	itemData.Items = append(itemData.Items, Item{Name: name, Category: category})
 
-	//サーバーがレスポンスするメッセージを指定
-	message := fmt.Sprintf("item received: name=%s, category=%s", name, category)
-	res := Response{Message: message}
-
-	err = json.NewEncoder(file).Encode(itemData) //Go→JSONに変換してfileに書き込む
+	data := json.NewEncoder(file) //出力ストリームをfileに設定
+	data.SetIndent("", " ")       //インデントを設定
+	err = data.Encode(itemData)   //itemDataをGo→JSONにエンコーディング
 	if err != nil {
 		c.Logger().Error(`Failed to create "item.json": %v`, err) //開発者用のエラーログの出力
 		res := Response{Message: `Failed to create item`}
 		return c.JSON(http.StatusInternalServerError, res) //ユーザー用にエラーをレスポンスする
 	}
 
+	//サーバーがレスポンスするメッセージを指定
+	message := fmt.Sprintf("item received: %s", name)
+	res := Response{Message: message}
 	return c.JSON(http.StatusOK, res) //ユーザーにレスポンスを返す。
+}
+
+func getItem(c echo.Context) error {
+	return c.JSONPretty(http.StatusOK, itemData, " ") //Go言語仕様のままでも勝手にJSONにエンコーディングしてくれる
 }
 
 func getImg(c echo.Context) error {
@@ -122,6 +127,7 @@ func main() {
 	// 各ルーティングに対するハンドラを設定
 	e.GET("/", root)          //"/"がきたらrootをよぶ
 	e.POST("/items", addItem) //addItemでエラーが起きた場合ってどこで拾えばいいの？
+	e.GET("/items", getItem)  //addItemでエラーが起きた場合ってどこで拾えばいいの？
 	e.GET("/image/:itemImg", getImg)
 
 	// Start server ：　Logger.Fatalは恐らくecho.Startがerrをreturnしたときに，errの内容を出力してexitする

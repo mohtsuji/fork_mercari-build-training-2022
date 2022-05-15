@@ -1,1 +1,12 @@
-{"items":[{"name":"tako","category":"jacket"}]}
+{
+ "items": [
+  {
+   "name": "cat",
+   "category": "animal"
+  },
+  {
+   "name": "cat",
+   "category": "animal"
+  }
+ ]
+}
