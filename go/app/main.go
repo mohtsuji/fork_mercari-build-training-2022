@@ -38,48 +38,50 @@ func root(c echo.Context) error {
 var itemData = ItemData{Items: make([]Item, 0, 0)}
 
 func ErrLackItem(field string, c echo.Context) error {
-	c.Logger().Warn(`Failed to create "item.json": `, field, " is ", "empty.") //開発者用のエラーログの出力
+	c.Logger().Warn(`Failed to create "item.json": `, field, " is ", "empty.") //Output Warn log for developers
 	message := fmt.Sprintf(`Failed to create item. Please fill %s.`, field)
 	res := Response{Message: message}
-	return c.JSON(http.StatusBadRequest, res) //ユーザー用にエラーをレスポンスする
+	return c.JSON(http.StatusBadRequest, res) //Response for user
+}
+
+func FailCreateItem(err error, c echo.Context) error {
+	c.Logger().Error(`Failed to create "item.json": %v`, err) //Output Warn log for developers
+	res := Response{Message: `Failed to create item`}
+	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
 func addItem(c echo.Context) error {
 	//fileの作成
-	file, err := os.Create("item.json") //fileはos.File型
+	file, err := os.Create("item.json") //file->type os.File
 	if err != nil {
-		c.Logger().Error(`Failed to create "item.json": %v`, err) //開発者用のエラーログの出力
-		res := Response{Message: `Failed to create item`}
-		return c.JSON(http.StatusInternalServerError, res) //ユーザー用にエラーをレスポンスする
+		return FailCreateItem(err, c)
 	}
 	defer file.Close()
 
 	// Get form data
-	name := c.FormValue("name") //多分 -d name=jacketとしたときには，新たにjacketという名前のフォーム（カテゴリ？）を作成している？
+	name := c.FormValue("name") //Create Form Value
 	category := c.FormValue("category")
-	//nameとcategoryいずれかが不足してたらエラー
+	//If "name" or "category" is lack, it is error
 	if name == "" {
 		return ErrLackItem("name", c)
-	} else if category == "" {
-		return ErrLackItem("category", c)
 	}
 	c.Logger().Infof("Receive item: %s", name)
+	if category == "" {
+		return ErrLackItem("category", c)
+	}
 	c.Logger().Infof("Receive item: %s", category)
 	itemData.Items = append(itemData.Items, Item{Name: name, Category: category})
 
-	data := json.NewEncoder(file) //出力ストリームをfileに設定
-	data.SetIndent("", " ")       //インデントを設定
-	err = data.Encode(itemData)   //itemDataをGo→JSONにエンコーディング
+	data := json.NewEncoder(file) //output stream = file
+	data.SetIndent("", " ")       //set Indent
+	err = data.Encode(itemData)   //Go→JSON(encoding)
 	if err != nil {
-		c.Logger().Error(`Failed to create "item.json": %v`, err) //開発者用のエラーログの出力
-		res := Response{Message: `Failed to create item`}
-		return c.JSON(http.StatusInternalServerError, res) //ユーザー用にエラーをレスポンスする
+		return FailCreateItem(err, c)
 	}
 
-	//サーバーがレスポンスするメッセージを指定
 	message := fmt.Sprintf("item received: %s", name)
 	res := Response{Message: message}
-	return c.JSON(http.StatusOK, res) //ユーザーにレスポンスを返す。
+	return c.JSON(http.StatusOK, res) //Response for user
 }
 
 func getItem(c echo.Context) error {
@@ -124,12 +126,11 @@ func main() {
 	}))
 
 	// Routes
-	// 各ルーティングに対するハンドラを設定
-	e.GET("/", root)          //"/"がきたらrootをよぶ
-	e.POST("/items", addItem) //addItemでエラーが起きた場合ってどこで拾えばいいの？
+	e.GET("/", root) //"/"->root
+	e.POST("/items", addItem)
 	e.GET("/items", getItem)
 	e.GET("/image/:itemImg", getImg)
 
-	// Start server ：　Logger.Fatalは恐らくecho.Startがerrをreturnしたときに，errの内容を出力してexitする
+	// Start server. If e.Start return err, e.Logger.Fatal outputs log and Exit(1)
 	e.Logger.Fatal(e.Start(":9000"))
 }
