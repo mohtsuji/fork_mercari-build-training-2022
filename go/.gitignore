@@ -1,5 +1,4 @@
 go.mod
 go.sum
-
-# File for saving data
 items.json
+mercari.sqlite3
