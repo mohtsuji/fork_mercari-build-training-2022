@@ -46,20 +46,20 @@ func (s MyStr) isEmpty() bool {
 var DbConnection *sql.DB
 
 func ErrLackItem(field string, c echo.Context) error {
-	c.Logger().Warn(`Failed to create "items.json": `, field, " is ", "empty.") //Output Warn log for developers
+	c.Logger().Warnf(`Failed to create "items.json": `, field, " is ", "empty.") //Output Warn log for developers
 	message := fmt.Sprintf(`Failed to create item. Please fill %s.`, field)
 	res := Response{Message: message}
 	return c.JSON(http.StatusBadRequest, res) //Response for user
 }
 
 func FailCreateItem(err error, c echo.Context) error {
-	c.Logger().Error(`Failed to create "items.json": %v`, err) //Output Warn log for developers
+	c.Logger().Errorf(`Failed to create "items.json": %v`, err) //Output Warn log for developers
 	res := Response{Message: `Failed to create item`}
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
 func FailGetItem(err error, c echo.Context) error {
-	c.Logger().Error(`Failed to get "items.json": %v`, err) //Output Warn log for developers
+	c.Logger().Errorf(`Failed to get "items.json": %v`, err) //Output Warn log for developers
 	res := Response{Message: `Failed to get item`}
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
