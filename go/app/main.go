@@ -64,6 +64,12 @@ func FailGetItem(err error, c echo.Context) error {
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
+func FailCreateDatabase(err error, c echo.Context, message string) error {
+	c.Logger().Errorf(`%s: %v`, message, err) //Output Warn log for developers
+	res := Response{Message: `Failed to create item`}
+	return c.JSON(http.StatusInternalServerError, res) //Response for user
+}
+
 func readItemJSON(c echo.Context) (ItemData, error) {
 	save_items := ItemData{}
 	read_items_byte, err := os.ReadFile("items.json")
@@ -93,37 +99,47 @@ func addItem(c echo.Context) error {
 	}
 	c.Logger().Infof("Receive item: %s", category)
 
-	//read "items.json"
-	file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0775) //file->type os.File
-	if err != nil {
-		return FailCreateItem(err, c)
-	}
-	defer file.Close()
-	save_items, err := readItemJSON(c)
-	if err != nil {
-		return FailCreateItem(err, c)
-	}
-	save_items.Items = append(save_items.Items, Item{Name: string(name), Category: string(category)})
-
-	//encoding and write contents to "items.json"
-	data := json.NewEncoder(file) //output stream = file
-	data.SetIndent("", " ")       //set Indent
-	err = data.Encode(save_items) //Go→JSON(encoding)
-	if err != nil {
-		return FailCreateItem(err, c)
-	}
-
-	//connect database
-	/*	DbConnection, err := sql.Open("sqlite3", "../db/mercari.sql")
+	/*	//read "items.json"
+		file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0775) //file->type os.File
 		if err != nil {
-			//		return FailCreateDatabase(err, c)
+			return FailCreateItem(err, c)
 		}
-		defer DbConnection.Close()
-		err = DbConnection.Ping()
+		defer file.Close()
+		save_items, err := readItemJSON(c)
 		if err != nil {
-			//	log.Fatal(err)
+			return FailCreateItem(err, c)
 		}
-	*/
+		save_items.Items = append(save_items.Items, Item{Name: string(name), Category: string(category)})
+
+		//encoding and write contents to "items.json"
+		data := json.NewEncoder(file) //output stream = file
+		data.SetIndent("", " ")       //set Indent
+		err = data.Encode(save_items) //Go→JSON(encoding)
+		if err != nil {
+			return FailCreateItem(err, c)
+		}*/
+
+	//Connect database. If not exist "mercari.sql", create it.
+	DbConnection, err := sql.Open("sqlite3", "./db/mercari.sqlite3")
+	if err != nil {
+		return FailCreateDatabase(err, c, `Failed to sql.Open`)
+	}
+	defer DbConnection.Close()
+	//Create table
+	data, err := os.ReadFile("./db/items.db")
+	if err != nil {
+		return FailCreateDatabase(err, c, `Failed to CREATE TABLE`)
+	}
+	_, err = DbConnection.Exec(string(data))
+	if err != nil {
+		return FailCreateDatabase(err, c, `Failed to CREATE TABLE`)
+	}
+	//Insert items
+	_, err = DbConnection.Exec("insert into items(name, category) values(?, ?)", string(name), string(category))
+	if err != nil {
+		return FailCreateDatabase(err, c, `Failed to INSERT INTO items`)
+	}
+
 	message := fmt.Sprintf("item received: %s", name)
 	res := Response{Message: message}
 	return c.JSON(http.StatusOK, res) //Response for user
