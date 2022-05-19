@@ -58,14 +58,14 @@ func FailCreateItem(err error, c echo.Context) error {
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
-func FailGetItem(err error, c echo.Context) error {
-	c.Logger().Errorf(`Failed to get "items.json": %v`, err) //Output Warn log for developers
+func FailGetItem(err error, c echo.Context, message string) error {
+	c.Logger().Errorf(`%s: %v`, message, err) //Output Warn log for developers
 	res := Response{Message: `Failed to get item`}
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
-func FailCreateDatabase(err error, c echo.Context, message string) error {
-	c.Logger().Errorf(`%s: %v`, message, err) //Output Warn log for developers
+func FailCreateDatabase(err error, c echo.Context) error {
+	c.Logger().Errorf(`Failed to Create Database: %v`, err) //Output Warn log for developers
 	res := Response{Message: `Failed to create item`}
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
@@ -83,6 +83,24 @@ func readItemJSON(c echo.Context) (ItemData, error) {
 		}
 	}
 	return save_items, nil
+}
+
+func openDatabase() (db *sql.DB, err error) {
+	//Connect database. If not exist "mercari.sql", create it.
+	DbConnection, err := sql.Open("sqlite3", "./db/mercari.sqlite3")
+	if err != nil {
+		return nil, err
+	}
+	//Create table
+	data, err := os.ReadFile("./db/items.db")
+	if err != nil {
+		return nil, err
+	}
+	_, err = DbConnection.Exec(string(data))
+	if err != nil {
+		return nil, err
+	}
+	return DbConnection, nil
 }
 
 func addItem(c echo.Context) error {
@@ -120,24 +138,15 @@ func addItem(c echo.Context) error {
 		}*/
 
 	//Connect database. If not exist "mercari.sql", create it.
-	DbConnection, err := sql.Open("sqlite3", "./db/mercari.sqlite3")
+	DbConnection, err := openDatabase()
 	if err != nil {
-		return FailCreateDatabase(err, c, `Failed to sql.Open`)
+		return FailCreateDatabase(err, c)
 	}
 	defer DbConnection.Close()
-	//Create table
-	data, err := os.ReadFile("./db/items.db")
-	if err != nil {
-		return FailCreateDatabase(err, c, `Failed to CREATE TABLE`)
-	}
-	_, err = DbConnection.Exec(string(data))
-	if err != nil {
-		return FailCreateDatabase(err, c, `Failed to CREATE TABLE`)
-	}
 	//Insert items
 	_, err = DbConnection.Exec("insert into items(name, category) values(?, ?)", string(name), string(category))
 	if err != nil {
-		return FailCreateDatabase(err, c, `Failed to INSERT INTO items`)
+		return FailCreateDatabase(err, c)
 	}
 
 	message := fmt.Sprintf("item received: %s", name)
@@ -146,11 +155,38 @@ func addItem(c echo.Context) error {
 }
 
 func getItem(c echo.Context) error {
-	save_items, err := readItemJSON(c)
+	// ---------item.json version------------
+	/*	save_items, err := readItemJSON(c)
+		if err != nil {
+			return FailGetItem(err, c, `Failed to readItemJAON`)
+		}*/
+
+	//Connect database. If not exist "mercari.sql", create it.
+	DbConnection, err := openDatabase()
 	if err != nil {
-		return FailGetItem(err, c)
+		return FailCreateDatabase(err, c)
 	}
-	return c.JSONPretty(http.StatusOK, save_items, " ") //Go言語仕様のままでも勝手にJSONにエンコーディングしてくれる
+	defer DbConnection.Close()
+	// get records
+	rows, err := DbConnection.Query(`SELECT * FROM items`)
+	if err != nil {
+		fmt.Printf("%T, %v\n", err, err)
+		return FailGetItem(err, c, `Failed to send Query`)
+	}
+	defer rows.Close()
+	var (
+		id       int
+		name     string
+		category string
+		items    ItemData
+	)
+	for rows.Next() {
+		if err := rows.Scan(&id, &name, &category); err != nil {
+			return FailGetItem(err, c, `Failed to rows.Scan`)
+		}
+		items.Items = append(items.Items, Item{Name: name, Category: category})
+	}
+	return c.JSONPretty(http.StatusOK, items, " ") //Go言語仕様のままでも勝手にJSONにエンコーディングしてくれる
 }
 
 func getImg(c echo.Context) error {
