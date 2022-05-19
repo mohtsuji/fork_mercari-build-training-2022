@@ -117,26 +117,6 @@ func addItem(c echo.Context) error {
 	}
 	c.Logger().Infof("Receive item: %s", category)
 
-	/*	//read "items.json"
-		file, err := os.OpenFile("items.json", os.O_RDWR|os.O_CREATE, 0775) //file->type os.File
-		if err != nil {
-			return FailCreateItem(err, c)
-		}
-		defer file.Close()
-		save_items, err := readItemJSON(c)
-		if err != nil {
-			return FailCreateItem(err, c)
-		}
-		save_items.Items = append(save_items.Items, Item{Name: string(name), Category: string(category)})
-
-		//encoding and write contents to "items.json"
-		data := json.NewEncoder(file) //output stream = file
-		data.SetIndent("", " ")       //set Indent
-		err = data.Encode(save_items) //Go→JSON(encoding)
-		if err != nil {
-			return FailCreateItem(err, c)
-		}*/
-
 	//Connect database. If not exist "mercari.sql", create it.
 	DbConnection, err := openDatabase()
 	if err != nil {
@@ -177,12 +157,6 @@ func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
 }
 
 func getItem(c echo.Context) error {
-	// ---------item.json version------------
-	/*	save_items, err := readItemJSON(c)
-		if err != nil {
-			return FailGetItem(err, c, `Failed to readItemJAON`)
-		}*/
-
 	//Connect database. If not exist "mercari.sql", create it.
 	DbConnection, err := openDatabase()
 	if err != nil {
@@ -205,7 +179,9 @@ func searchItem(c echo.Context) error {
 	}
 	defer DbConnection.Close()
 	// get records
-	items, err := sendSelectQuery(DbConnection, `SELECT * FROM items`)
+	name := c.QueryParam("keyword")
+	cmd := fmt.Sprintf(`SELECT * FROM items WHERE name='%s'`, name)
+	items, err := sendSelectQuery(DbConnection, cmd)
 	if err != nil {
 		return FailGetItem(err, c)
 	}
@@ -253,7 +229,7 @@ func main() {
 	e.GET("/", root) //"/"->root
 	e.POST("/items", addItem)
 	e.GET("/items", getItem)
-	e.GET("/seach", searchItem)
+	e.GET("/search", searchItem)
 	e.GET("/image/:itemImg", getImg)
 
 	// Start server. If e.Start return err, e.Logger.Fatal outputs log and Exit(1)
