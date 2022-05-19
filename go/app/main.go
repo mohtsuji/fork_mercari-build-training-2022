@@ -58,8 +58,8 @@ func FailCreateItem(err error, c echo.Context) error {
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
-func FailGetItem(err error, c echo.Context, message string) error {
-	c.Logger().Errorf(`%s: %v`, message, err) //Output Warn log for developers
+func FailGetItem(err error, c echo.Context) error {
+	c.Logger().Errorf(`Failed to get item: %v`, err) //Output Warn log for developers
 	res := Response{Message: `Failed to get item`}
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
@@ -154,6 +154,28 @@ func addItem(c echo.Context) error {
 	return c.JSON(http.StatusOK, res) //Response for user
 }
 
+func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
+	// get records
+	var (
+		id       int
+		name     string
+		category string
+		items    ItemData
+	)
+	rows, err := DbConnection.Query(query)
+	if err != nil {
+		return items, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := rows.Scan(&id, &name, &category); err != nil {
+			return items, err
+		}
+		items.Items = append(items.Items, Item{Name: name, Category: category})
+	}
+	return items, nil
+}
+
 func getItem(c echo.Context) error {
 	// ---------item.json version------------
 	/*	save_items, err := readItemJSON(c)
@@ -168,23 +190,24 @@ func getItem(c echo.Context) error {
 	}
 	defer DbConnection.Close()
 	// get records
-	rows, err := DbConnection.Query(`SELECT * FROM items`)
+	items, err := sendSelectQuery(DbConnection, `SELECT * FROM items`)
 	if err != nil {
-		fmt.Printf("%T, %v\n", err, err)
-		return FailGetItem(err, c, `Failed to send Query`)
+		return FailGetItem(err, c)
 	}
-	defer rows.Close()
-	var (
-		id       int
-		name     string
-		category string
-		items    ItemData
-	)
-	for rows.Next() {
-		if err := rows.Scan(&id, &name, &category); err != nil {
-			return FailGetItem(err, c, `Failed to rows.Scan`)
-		}
-		items.Items = append(items.Items, Item{Name: name, Category: category})
+	return c.JSONPretty(http.StatusOK, items, " ") //Go言語仕様のままでも勝手にJSONにエンコーディングしてくれる
+}
+
+func searchItem(c echo.Context) error {
+	//Connect database. If not exist "mercari.sql", create it.
+	DbConnection, err := openDatabase()
+	if err != nil {
+		return FailCreateDatabase(err, c)
+	}
+	defer DbConnection.Close()
+	// get records
+	items, err := sendSelectQuery(DbConnection, `SELECT * FROM items`)
+	if err != nil {
+		return FailGetItem(err, c)
 	}
 	return c.JSONPretty(http.StatusOK, items, " ") //Go言語仕様のままでも勝手にJSONにエンコーディングしてくれる
 }
@@ -230,6 +253,7 @@ func main() {
 	e.GET("/", root) //"/"->root
 	e.POST("/items", addItem)
 	e.GET("/items", getItem)
+	e.GET("/seach", searchItem)
 	e.GET("/image/:itemImg", getImg)
 
 	// Start server. If e.Start return err, e.Logger.Fatal outputs log and Exit(1)
