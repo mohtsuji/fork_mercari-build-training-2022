@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -133,8 +135,11 @@ func UploadImage(c echo.Context) error {
 	fmt.Println(image.Filename)
 	fileModel := strings.Split(image.Filename, ".")
 	fileName := fileModel[0]
+	//Exchange filename to hash256
+	fileNameHash := sha256.Sum256([]byte(fileName))
+	fileNameHashString := hex.EncodeToString(fileNameHash[:])
 	//Create ./images/image.jpg
-	dst, err := os.Create(fmt.Sprintf("./images/%s.jpg", fileName))
+	dst, err := os.Create(fmt.Sprintf("./images/%s.jpg", fileNameHashString))
 	if err != nil {
 		return err
 	}
