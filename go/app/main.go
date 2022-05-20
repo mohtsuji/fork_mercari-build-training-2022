@@ -3,7 +3,9 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -45,8 +47,8 @@ func (s MyStr) isEmpty() bool {
 
 var DbConnection *sql.DB
 
-func ErrLackItem(field string, c echo.Context) error {
-	c.Logger().Warnf(`Failed to create "items.json": `, field, " is ", "empty.") //Output Warn log for developers
+func ErrLackItem(field string, err error, c echo.Context) error {
+	c.Logger().Warnf(`Failed to create database: %v`, err) //Output Warn log for developers
 	message := fmt.Sprintf(`Failed to create item. Please fill %s.`, field)
 	res := Response{Message: message}
 	return c.JSON(http.StatusBadRequest, res) //Response for user
@@ -67,6 +69,12 @@ func FailGetItem(err error, c echo.Context) error {
 func FailCreateDatabase(err error, c echo.Context) error {
 	c.Logger().Errorf(`Failed to Create Database: %v`, err) //Output Warn log for developers
 	res := Response{Message: `Failed to create item`}
+	return c.JSON(http.StatusInternalServerError, res) //Response for user
+}
+
+func FailCreateImage(err error, c echo.Context) error {
+	c.Logger().Errorf(`Failed to Create Imgae: %v`, err) //Output Warn log for developers
+	res := Response{Message: `Failed to create image`}
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
@@ -103,20 +111,62 @@ func openDatabase() (db *sql.DB, err error) {
 	return DbConnection, nil
 }
 
+func UploadImage(c echo.Context) error {
+	//Create images directory
+	err := os.Mkdir("images", 0750) //これ0750で大丈夫？
+	if err != nil && !os.IsExist(err) {
+		return FailCreateDatabase(err, c)
+	}
+	//Upload file
+	image, err := c.FormFile("image") //Content_typeの勉強したほうが良さそう
+	//ここはエラーの種類で処理方法変えるべき？
+	if err != nil {
+		return err
+	}
+	//src -> image file data
+	src, err := image.Open()
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	//Get image file name
+	fmt.Println(image.Filename)
+	fileModel := strings.Split(image.Filename, ".")
+	fileName := fileModel[0]
+	//Create ./images/image.jpg
+	dst, err := os.Create(fmt.Sprintf("./images/%s.jpg", fileName))
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+	//Copy image file data
+	if _, err = io.Copy(dst, src); err != nil {
+		return err
+	}
+	c.Logger().Infof("Receive item: %s", image.Filename)
+	return nil
+}
+
+func CheckLackItem(name, category MyStr, c echo.Context) (string, error) {
+	if name.isEmpty() == true {
+		return "name", errors.New("Name is lack")
+	}
+	c.Logger().Infof("Receive item: %s", name)
+	if category.isEmpty() == true {
+		return "category", errors.New("Category is lack")
+	}
+	c.Logger().Infof("Receive item: %s", category)
+	return "", nil
+}
+
 func addItem(c echo.Context) error {
 	// Get form data
 	name := MyStr(c.FormValue("name")) //Create Form Value
 	category := MyStr(c.FormValue("category"))
 	//If "name" or "category" is lack, it is error
-	if name.isEmpty() == true {
-		return ErrLackItem("name", c)
+	if s, err := CheckLackItem(name, category, c); err != nil {
+		return ErrLackItem(s, err, c)
 	}
-	c.Logger().Infof("Receive item: %s", name)
-	if category.isEmpty() == true {
-		return ErrLackItem("category", c)
-	}
-	c.Logger().Infof("Receive item: %s", category)
-
 	//Connect database. If not exist "mercari.sql", create it.
 	DbConnection, err := openDatabase()
 	if err != nil {
@@ -128,7 +178,11 @@ func addItem(c echo.Context) error {
 	if err != nil {
 		return FailCreateDatabase(err, c)
 	}
-
+	//Upload image
+	err = UploadImage(c)
+	if err != nil {
+		return FailCreateImage(err, c)
+	}
 	message := fmt.Sprintf("item received: %s", name)
 	res := Response{Message: message}
 	return c.JSON(http.StatusOK, res) //Response for user
