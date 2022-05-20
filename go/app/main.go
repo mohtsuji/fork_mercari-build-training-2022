@@ -31,7 +31,7 @@ type Item struct {
 }
 
 type Category struct {
-	Id   int    `json:id`
+	Id   int    `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -230,14 +230,16 @@ func sendCategorySelectQuery(DbConnection *sql.DB, query string) (Category, erro
 	return category, nil
 }
 
-func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
+func sendItemsSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
 	// get records
 	var (
-		id       int
-		name     string
-		category string
-		image    string
-		items    ItemData
+		id             int
+		name           string
+		category_id    int
+		image          string
+		idAtCategory   int
+		nameAtCategory string
+		items          ItemData
 	)
 	rows, err := DbConnection.Query(query)
 	if err != nil {
@@ -245,10 +247,10 @@ func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		if err := rows.Scan(&id, &name, &category, &image); err != nil {
+		if err := rows.Scan(&id, &name, &category_id, &image, &idAtCategory, &nameAtCategory); err != nil {
 			return items, err
 		}
-		items.Items = append(items.Items, Item{Name: name, Category: category, Image: image})
+		items.Items = append(items.Items, Item{Name: name, Category: nameAtCategory, Image: image})
 	}
 	return items, nil
 }
@@ -261,7 +263,7 @@ func getItem(c echo.Context) error {
 	}
 	defer DbConnection.Close()
 	// get records
-	items, err := sendSelectQuery(DbConnection, `SELECT * FROM items`)
+	items, err := sendItemsSelectQuery(DbConnection, `SELECT * FROM items INNER JOIN category ON items.category_id = category.id`)
 	if err != nil {
 		return FailGetItem(err, c)
 	}
@@ -277,8 +279,8 @@ func searchItem(c echo.Context) error {
 	defer DbConnection.Close()
 	// get records
 	name := c.QueryParam("keyword")
-	cmd := fmt.Sprintf(`SELECT * FROM items WHERE name='%s'`, name)
-	items, err := sendSelectQuery(DbConnection, cmd)
+	cmd := fmt.Sprintf(`SELECT * FROM items INNER JOIN category ON items.category_id = category.id WHERE items.name='%s'`, name)
+	items, err := sendItemsSelectQuery(DbConnection, cmd)
 	if err != nil {
 		return FailGetItem(err, c)
 	}
@@ -312,8 +314,8 @@ func getDetails(c echo.Context) error {
 	if err != nil {
 		return FailGetItem(err, c)
 	}
-	cmd := fmt.Sprintf(`SELECT * FROM items WHERE id='%d'`, id)
-	items, err := sendSelectQuery(DbConnection, cmd)
+	cmd := fmt.Sprintf(`SELECT * FROM items INNER JOIN category ON items.category_id = category.id WHERE items.id='%d'`, id)
+	items, err := sendItemsSelectQuery(DbConnection, cmd)
 	if err != nil {
 		return FailGetItem(err, c)
 	}
