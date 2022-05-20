@@ -80,6 +80,18 @@ func FailCreateImage(err error, c echo.Context) error {
 	return c.JSON(http.StatusInternalServerError, res) //Response for user
 }
 
+func CheckLackItem(name, category MyStr, c echo.Context) (string, error) {
+	if name.isEmpty() == true {
+		return "name", errors.New("Name is lack")
+	}
+	c.Logger().Infof("Receive item: %s", name)
+	if category.isEmpty() == true {
+		return "category", errors.New("Category is lack")
+	}
+	c.Logger().Infof("Receive item: %s", category)
+	return "", nil
+}
+
 func readItemJSON(c echo.Context) (ItemData, error) {
 	save_items := ItemData{}
 	read_items_byte, err := os.ReadFile("items.json")
@@ -113,55 +125,43 @@ func openDatabase() (db *sql.DB, err error) {
 	return DbConnection, nil
 }
 
-func UploadImage(c echo.Context) error {
+func UploadImage(c echo.Context) (string, error) {
 	//Create images directory
 	err := os.Mkdir("images", 0750) //これ0750で大丈夫？
 	if err != nil && !os.IsExist(err) {
-		return FailCreateDatabase(err, c)
+		return "", FailCreateDatabase(err, c)
 	}
 	//Upload file
 	image, err := c.FormFile("image") //Content_typeの勉強したほうが良さそう
 	//ここはエラーの種類で処理方法変えるべき？
 	if err != nil {
-		return err
+		return "", err
 	}
 	//src -> image file data
 	src, err := image.Open()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer src.Close()
 	//Get image file name
 	fmt.Println(image.Filename)
 	fileModel := strings.Split(image.Filename, ".")
 	fileName := fileModel[0]
-	//Exchange filename to hash256
+	//Exchange filename from string to hash256
 	fileNameHash := sha256.Sum256([]byte(fileName))
-	fileNameHashString := hex.EncodeToString(fileNameHash[:])
+	fileNameHashString := hex.EncodeToString(fileNameHash[:]) //ハッシュ値はasciiコード化された文字でもなんでもなく，そのままでstringとして扱いたい
 	//Create ./images/image.jpg
 	dst, err := os.Create(fmt.Sprintf("./images/%s.jpg", fileNameHashString))
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer dst.Close()
 	//Copy image file data
 	if _, err = io.Copy(dst, src); err != nil {
-		return err
+		return "", err
 	}
 	c.Logger().Infof("Receive item: %s", image.Filename)
-	return nil
-}
-
-func CheckLackItem(name, category MyStr, c echo.Context) (string, error) {
-	if name.isEmpty() == true {
-		return "name", errors.New("Name is lack")
-	}
-	c.Logger().Infof("Receive item: %s", name)
-	if category.isEmpty() == true {
-		return "category", errors.New("Category is lack")
-	}
-	c.Logger().Infof("Receive item: %s", category)
-	return "", nil
+	return fmt.Sprint(fileNameHashString, ".jpg"), nil
 }
 
 func addItem(c echo.Context) error {
@@ -172,6 +172,11 @@ func addItem(c echo.Context) error {
 	if s, err := CheckLackItem(name, category, c); err != nil {
 		return ErrLackItem(s, err, c)
 	}
+	//Upload image
+	image, err := UploadImage(c)
+	if err != nil {
+		return FailCreateImage(err, c)
+	}
 	//Connect database. If not exist "mercari.sql", create it.
 	DbConnection, err := openDatabase()
 	if err != nil {
@@ -179,14 +184,9 @@ func addItem(c echo.Context) error {
 	}
 	defer DbConnection.Close()
 	//Insert items
-	_, err = DbConnection.Exec("insert into items(name, category) values(?, ?)", string(name), string(category))
+	_, err = DbConnection.Exec("insert into items(name, category, image) values(?, ?, ?)", string(name), string(category), image)
 	if err != nil {
 		return FailCreateDatabase(err, c)
-	}
-	//Upload image
-	err = UploadImage(c)
-	if err != nil {
-		return FailCreateImage(err, c)
 	}
 	message := fmt.Sprintf("item received: %s", name)
 	res := Response{Message: message}
