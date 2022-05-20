@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -26,6 +27,7 @@ const (
 type Item struct {
 	Name     string `json:"name"`
 	Category string `json:"category"`
+	Image    string `json:"image"`
 }
 
 type ItemData struct {
@@ -199,6 +201,7 @@ func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
 		id       int
 		name     string
 		category string
+		image    string
 		items    ItemData
 	)
 	rows, err := DbConnection.Query(query)
@@ -207,10 +210,10 @@ func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		if err := rows.Scan(&id, &name, &category); err != nil {
+		if err := rows.Scan(&id, &name, &category, &image); err != nil {
 			return items, err
 		}
-		items.Items = append(items.Items, Item{Name: name, Category: category})
+		items.Items = append(items.Items, Item{Name: name, Category: category, Image: image})
 	}
 	return items, nil
 }
@@ -262,6 +265,26 @@ func getImg(c echo.Context) error {
 	return c.File(imgPath)
 }
 
+func getDetails(c echo.Context) error {
+	//Connect database. If not exist "mercari.sql", create it.
+	DbConnection, err := openDatabase()
+	if err != nil {
+		return FailCreateDatabase(err, c)
+	}
+	defer DbConnection.Close()
+	// get id
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return FailGetItem(err, c)
+	}
+	cmd := fmt.Sprintf(`SELECT * FROM items WHERE id='%d'`, id)
+	items, err := sendSelectQuery(DbConnection, cmd)
+	if err != nil {
+		return FailGetItem(err, c)
+	}
+	return c.JSONPretty(http.StatusOK, items.Items[0], " ") //Go言語仕様のままでも勝手にJSONにエンコーディングしてくれる
+}
+
 func main() {
 	//new instance
 	e := echo.New()
@@ -284,11 +307,12 @@ func main() {
 		//AllowCredentialsは初期値でfalse(cookieは使用しない）)
 	}))
 
-	// Routes
+	// Routes ルートから誘導された関数はすべてreturn errだが，もしerr != nilだったら{"message":"Internal Server Error"}がレスポンスされるぽい
 	e.GET("/", root) //"/"->root
 	e.POST("/items", addItem)
 	e.GET("/items", getItem)
 	e.GET("/search", searchItem)
+	e.GET("/items/:id", getDetails)
 	e.GET("/image/:itemImg", getImg)
 
 	// Start server. If e.Start return err, e.Logger.Fatal outputs log and Exit(1)
