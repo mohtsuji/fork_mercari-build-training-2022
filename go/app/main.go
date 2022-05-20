@@ -30,6 +30,11 @@ type Item struct {
 	Image    string `json:"image"`
 }
 
+type Category struct {
+	Id   int    `json:id`
+	Name string `json:"name"`
+}
+
 type ItemData struct {
 	Items []Item `json:"items"`
 }
@@ -120,9 +125,12 @@ func openDatabase() (db *sql.DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = DbConnection.Exec(string(data))
-	if err != nil {
-		return nil, err
+	sqlCmd := strings.Split(string(data), "\n")
+	for _, cmd := range sqlCmd {
+		_, err = DbConnection.Exec(cmd)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return DbConnection, nil
 }
@@ -186,13 +194,40 @@ func addItem(c echo.Context) error {
 	}
 	defer DbConnection.Close()
 	//Insert items
-	_, err = DbConnection.Exec("insert into items(name, category, image) values(?, ?, ?)", string(name), string(category), image)
+	_, err = DbConnection.Exec("insert into category(name) values(?)", string(category))
+	cmd := fmt.Sprintf(`SELECT * FROM category WHERE name='%s'`, string(category))
+	category_data, err := sendCategorySelectQuery(DbConnection, cmd)
+	if err != nil {
+		return FailGetItem(err, c)
+	}
+	_, err = DbConnection.Exec("insert into items(name, category_id, image) values(?, ?, ?)", string(name), category_data.Id, image)
 	if err != nil {
 		return FailCreateDatabase(err, c)
 	}
 	message := fmt.Sprintf("item received: %s", name)
 	res := Response{Message: message}
 	return c.JSON(http.StatusOK, res) //Response for user
+}
+
+func sendCategorySelectQuery(DbConnection *sql.DB, query string) (Category, error) {
+	// get records
+	var (
+		id       int
+		name     string
+		category Category
+	)
+	rows, err := DbConnection.Query(query)
+	if err != nil {
+		return category, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := rows.Scan(&id, &name); err != nil {
+			return category, err
+		}
+		category = Category{Id: id, Name: name}
+	}
+	return category, nil
 }
 
 func sendSelectQuery(DbConnection *sql.DB, query string) (ItemData, error) {
