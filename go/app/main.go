@@ -146,6 +146,7 @@ func UploadImage(c echo.Context) (string, error) {
 	//ここはエラーの種類で処理方法変えるべき？
 	if err != nil {
 		return "", err
+		//	return "", nil
 	}
 	//src -> image file data
 	src, err := image.Open()
